@@ -45,6 +45,18 @@ Each station object contains keys of `name`, `id` and `lines`. Name and ID are
 self-explanatory and lines is an array containing ids of tube lines served by
 that station.  
 
+**GET** `/stops`
+Returns a JSON array of stops reachable from the given station on the given line.
+This request must contain a query string with `station` and `line` KVs.  
+
+*Query String*
+- `station` must only be a valid NaptanId a for Tube Station.
+- `line` must be a valid Tube Line id.
+
+*Examples*
+`/stops?station=940GZZLUTBC&line=northern`
+`/stops?station=940GZZLUTBC&line=waterloo-city`
+
 ### Arrivals
 
 **GET** `/stations/:station_id/:line_id/:direction`  

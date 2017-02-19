@@ -3,6 +3,8 @@ defmodule Commuter.Station.Controller do
   Handles client requests for station data.
   """
 
+  # Public Functions (exposed to the Router.)
+
   @doc """
   Handles a request for a list of all stations served by the app and the lines
   for each. Sends JSON array of objects back to the client.
@@ -24,6 +26,8 @@ defmodule Commuter.Station.Controller do
     |> assign_arrival_params
     |> lookup_process
   end
+
+  # Private Functions (used by the public functions)
 
   defp assign_arrival_params(%Plug.Conn{path_params: p} = conn) do
     conn
@@ -62,10 +66,5 @@ defmodule Commuter.Station.Controller do
   defp send_response(response_body, code, conn) do
     Plug.Conn.resp(conn, code, response_body)
   end
-
-  # defp only_distance_in_seconds(list_of_trains) do
-  #   list_of_trains
-  #   |> Enum.map(fn %Train{time_to_station: time} -> "#{time} secs" end)
-  # end
 
 end

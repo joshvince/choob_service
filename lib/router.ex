@@ -3,11 +3,15 @@ defmodule Commuter.Router do
 
   require Logger
 
-  alias Commuter.Station.Controller
+  alias Commuter.Station.Controller, as: StationController
+  alias Commuter.Journey.Controller, as: JourneyController
 
+  plug Corsica, origins: "*"
   plug Plug.Logger
   plug :match
   plug :dispatch
+
+  # GENSERVER INITIALISATION
 
   def start_link do
     {:ok, _} = Plug.Adapters.Cowboy.http(Commuter.Router, [],
@@ -22,6 +26,8 @@ defmodule Commuter.Router do
   defp port(nil), do: 4000
   defp port(port_string), do: String.to_integer(port_string)
 
+  # ROUTES
+
   get "/" do
     conn
     |> send_resp(200, "OK")
@@ -30,12 +36,25 @@ defmodule Commuter.Router do
 
   get "/stations" do
     conn
-    |> Controller.get_all_stations
-    # send back a list of all the stations currently active.
+    |> StationController.get_all_stations
   end
 
   get "/stations/:station_id/:line_id/:direction" do
-    Controller.get_arrivals(conn)
+    conn
+    |> StationController.get_arrivals
+  end
+
+  get "/directions" do
+    conn
+    |> Plug.Conn.fetch_query_params
+    |> IO.inspect
+    |> send_resp(200, "OK")
+  end
+
+  get "/stops" do
+    conn
+    |> Plug.Conn.fetch_query_params
+    |> JourneyController.get_possible_stops
   end
 
   match _ do

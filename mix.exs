@@ -34,7 +34,8 @@ defmodule Commuter.Mixfile do
       {:httpotion, "~> 3.0.2"},
       {:poison, "~> 3.0"},
       {:timex, "~> 3.0"},
-      {:distillery, "~> 1.0"}
+      {:distillery, "~> 1.0"},
+      {:corsica, "~> 0.5.0"}
     ]
   end
 end

@@ -72,11 +72,6 @@ defmodule Commuter.Tfl do
         retrieve_all_stations()
     end
   end
-  # defp handle_response(%HTTPotion.ErrorResponse{}) do
-  #   IO.puts("The call failed!")
-  #   retrieve_all_stations
-  # end
-  # defp handle_response(successful_response), do: take_body(successful_response)
 
   # Arrival Data
 
@@ -87,6 +82,20 @@ defmodule Commuter.Tfl do
   def line_arrivals(station_id, line_id) do
     "https://api.tfl.gov.uk/Line/#{line_id}/Arrivals?stopPointId=#{station_id}"
     |> call_tfl
+  end
+
+  # Journey Data
+
+  def get_possible_stops(originatorId, lineId) do
+    "https://api.tfl.gov.uk/StopPoint/#{originatorId}/CanReachOnLine/#{lineId}?serviceTypes=Regular"
+    |> call_tfl
+    |> take_body
+  end
+
+  def get_direction(originatorId, destinationId, lineId) do
+    "https://api.tfl.gov.uk/StopPoint#{originatorId}/DirectionTo/#{destinationId}?lineId=#{lineId}"
+    |> call_tfl
+    |> take_body
   end
 
   # Parsing Functions
