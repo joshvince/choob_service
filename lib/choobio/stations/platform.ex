@@ -1,48 +1,60 @@
 defmodule Choobio.Station.Platform do
-  use GenServer
+	require Logger
+	use Timex
+	use GenServer
   alias __MODULE__, as: Platform
 
-  defstruct [:station_id, :station_name, :line_id, :arrivals, :timestamp]
-
-  # Client API
+  defstruct [:station_id, :station_name, :line_id, :timestamp,
+						 :at_platform, departures: []]
 
   @doc """
-  Used to start a supervised process. Gives itself a name which is the result of
-  atomising `station_id` and `line_id` separated by an underscore.
-  ```
+  Used to start a supervised process. Registers the name in the :platform_registry.
+
+	The process will be registered under :"naptanId_lineId" like
+	```
   :"906ULZBLH_northern"
   ```
   Station ID and line ID are both passed to the `init` function.
   """
   def start_link(station_id, station_name, line_id) do
-    pname = create_process_name(station_id, line_id)
-    GenServer.start_link(__MODULE__, {{station_id, line_id}, station_name}, name: pname)
+    GenServer.start_link(__MODULE__, {{station_id, line_id}, station_name}, name: via_tuple({station_id, line_id}))
   end
+
+	@doc """
+	Used to register the process name under its vehicle ID in the registry.
+	See `&start_link/1` for more details.
+	"""
+	def via_tuple({station_id, line_id}) do
+		pname = create_process_name(station_id, line_id)
+		{:via, Registry, {:platform_registry, pname}}
+	end
 
   defp create_process_name(station_id, line_id) do
     "#{station_id}_#{line_id}" |> String.to_atom
   end
 
-  @doc """
-    Returns arrival lists of trains by fetching data from the TFL API.
+	# Public API
 
-    Data is considered 'fresh' up to 60 seconds' lag. This is to avoid hammering
-    the TFL API. If the cached timestamp is less than 60 seconds ago, the cached
-    data will be returned.
-
-    Otherwise, new data is fetched from TFL, converted to lists of train structs
-    and sorted by time of arrival.
-
-    For details on a train struct, see the `Commuter.Train` module.
-  """
-  def get_arrivals(process_name) do
-    GenServer.call(process_name, :get_arrivals)
+  def get_arrivals({station_id, line_id}) do
+    GenServer.call(via_tuple({station_id, line_id}), :get_arrivals)
   end
+
+	def get_departures({station_id, line_id}) do
+		GenServer.call(via_tuple({station_id, line_id}), :get_departures)
+	end
+
+	def new_arrival({station_id, line_id}, train_data) do
+		GenServer.call(via_tuple({station_id, line_id}), {:new_arrival, train_data})
+	end
+
+	def departed({station_id, line_id}, train_id) do
+		GenServer.cast(via_tuple({station_id, line_id}), {:departed, train_id})
+	end
+
 
   # Server callbacks
 
   def init({{station_id, line_id}, station_name}) do
-    # IO.puts "Arrivals board is starting up for station #{station_id} for #{line_id}"
     initial_state =
       %Platform{station_id: station_id, line_id: line_id, station_name: station_name}
     {:ok, initial_state}
@@ -51,60 +63,42 @@ defmodule Choobio.Station.Platform do
   #NOTE: temp while we set the scaffold up.
 
   def handle_call(:get_arrivals, _from, %Platform{} = state) do
-    {:reply, "Received request for arrivals", state}
+		Logger.info "Arrivals for #{state.station_name}: #{inspect state.arrivals}"
+    {:reply, :test, state}
   end
 
-  # def handle_call(:get_arrivals, _from, %Station{} = state) do
-  #   result = fetch_arrivals(state)
-  #   {:reply, result, result}
-  # end
+	# if the train is the first arrival at this station... Something went wrong
+	def handle_call({:new_arrival, vehicle_id}, _from, %Platform{departures: []} = state) do
+		new_state = add_new_arrival(state, vehicle_id)
+		{:reply, :first_arrival, new_state}
+	end
 
-  # Business Logic
-  #
-  # defp fetch_arrivals(%Station{} = state) do
-  #   check_time_elapsed(state.timestamp)
-  #   |> return_arrivals(state)
-  # end
-  #
-  # defp check_time_elapsed(cached_time) do
-  #   diff = Timex.diff(Timex.now, cached_time, :seconds)
-  #   cond do
-  #     diff < 60 ->
-  #       :use_cache
-  #     true ->
-  #       :use_fresh
-  #   end
-  # end
-  #
-  # defp return_arrivals(:use_cache, %Station{} = cache), do: cache
-  # defp return_arrivals(:use_fresh, %Station{} = cache) do
-  #   attempt_tfl_call(cache)
-  # end
-  #
-  # defp attempt_tfl_call(%Station{} = cache) do
-  #   response = @tfl_api.line_arrivals(cache.station_id, cache.line_id)
-  #   case @tfl_api.successful_response?(response) do
-  #     false ->
-  #       cache
-  #     true ->
-  #       @tfl_api.take_body(response) |> create_cache(cache)
-  #   end
-  # end
-  #
-  # defp create_cache(http_response_body, %Station{} = cache) do
-  #   http_response_body
-  #   |> Train.create_train_structs
-  #   |> Arrivals.build_arrivals
-  #   |> update_arrivals(cache)
-  #   |> insert_timestamp
-  # end
-  #
-  # defp update_arrivals(%Arrivals{} = updated_arrivals, %Station{} = cache) do
-  #   %{cache | arrivals: updated_arrivals}
-  # end
-  #
-  # defp insert_timestamp(%Station{} = cache) do
-  #   time = Timex.now
-  #   %{cache | timestamp: time}
-  # end
+	def handle_call({:new_arrival, vehicle_id}, _from, %Platform{} = state) do
+		[latest | _rest] = state.departures
+		new_state = add_new_arrival(state, vehicle_id)
+		{:reply, latest, new_state}
+	end
+
+	def handle_call(:get_departures, _from, %Platform{departures: list} = state) do
+		{:reply, list, state}
+	end
+
+	def handle_cast({:departed, _train_id}, %Platform{} = state) do
+		new_state = handle_departure(state)
+		{:noreply, new_state}
+	end
+
+	# Private Functions
+
+	defp add_new_arrival(%Platform{} = state, vehicle) do
+		vehicle_map = %{id: vehicle, arrived: Timex.now(), departed: nil}
+		Map.put(state, :at_platform, vehicle_map)
+	end
+
+	defp handle_departure(%Platform{at_platform: platform_map, departures: dep_list} = state) do
+		updated_pmap = %{platform_map | :departed => Timex.now()}
+		new_deps = [updated_pmap | dep_list]
+		%{state | :at_platform => %{}, :departures => new_deps}
+	end
+
 end
